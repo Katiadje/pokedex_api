@@ -1,29 +1,45 @@
-# 🌍 Pokédex + Weather API
+# 🌍 Pokédex Weather API
 
-Une API FastAPI qui combine un **Pokédex** avec la météo en temps réel grâce à **OpenWeather**.  
-Chaque Pokémon peut avoir une **faiblesse météo** en fonction de sa ville actuelle.
+Une API développée avec **FastAPI** qui combine un **Pokédex** avec la météo en temps réel via **OpenWeather**.  
+Chaque Pokémon peut avoir une **faiblesse météo** selon son type et les conditions climatiques de sa ville actuelle.
 
 ---
 
 ## 🚀 Fonctionnalités
-- Ajouter, lister, mettre à jour et supprimer des Pokémon (CRUD).
-- Vérifier la **faiblesse météo** d’un Pokémon selon son type et la météo réelle dans une ville donnée :
+- 📌 CRUD complet sur les Pokémon (ajout, listing, modification, suppression).
+- 🌦️ Vérification de la **faiblesse météo** d’un Pokémon selon :
   - 🔥 **Feu** → faible s’il pleut ☔
   - 💧 **Eau** → faible s’il neige ❄️
-  - ⚡ **Électrique** → faible s’il y a un orage ⛈️
-  - 🐾 **Normal** → pas de faiblesse météo
+  - ⚡ **Électrique** → faible en cas d’orage ⛈️
+  - 🐾 **Normal** → aucune faiblesse météo
+- ⚡ Cache des résultats météo avec **Redis** pour de meilleures performances.
 
 ---
 
 ## 📂 Structure du projet
 ```
-app/
- ├── main.py        # Routes FastAPI (CRUD + météo)
- ├── database.py    # Connexion à SQLite avec SQLAlchemy
- ├── models.py      # Modèle Pokemon
- ├── schemas.py     # Schémas Pydantic (entrée/sortie)
- ├── deps.py        # Redis (cache)
- ├── weather.py     # Intégration OpenWeather API
+pokedex_api/
+ ├── app/
+ │   ├── main.py          # Point d'entrée FastAPI (routes)
+ │   ├── database.py      # Connexion à SQLite (SQLAlchemy)
+ │   ├── models.py        # Modèles SQLAlchemy (Pokemon)
+ │   ├── schemas.py       # Schémas Pydantic (entrée/sortie)
+ │   ├── deps.py          # Gestion du cache Redis
+ │   ├── weather.py       # Intégration OpenWeather API
+ │   └── crud.py          # Fonctions CRUD centralisées
+ │
+ ├── tests/               # Tests unitaires et d’intégration
+ │   ├── test_pokemon.py
+ │
+ ├── Dockerfile           # Image Docker pour l’API
+ ├── docker-compose.yml   # Stack complète (API + Redis)
+ ├── requirements.txt     # Dépendances Python
+ ├── pokemons.json        # Données initiales (exemple)
+ ├── pokedex.db           # Base SQLite (dev/test)
+ ├── .env                 # Variables d’environnement (clé OpenWeather)
+ ├── .gitignore           # Fichiers ignorés par Git
+ ├── pytest.ini           # Config pytest
+ └── README.md            # Documentation
 ```
 
 ---
@@ -32,15 +48,17 @@ app/
 
 ### 1. Cloner le projet
 ```bash
-git clone https://github.com/Katiadje/pokedex-weather.git
-cd pokedex-weather
+git clone https://github.com/Katiadje/pokedex_api.git
+cd pokedex_api
 ```
 
 ### 2. Créer un environnement virtuel
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate   # Linux/Mac
-.venv\Scripts\activate    # Windows PowerShell
+python -m venv .venv
+# Linux/Mac
+source .venv/bin/activate
+# Windows PowerShell
+.venv\Scripts\activate
 ```
 
 ### 3. Installer les dépendances
@@ -48,9 +66,8 @@ source .venv/bin/activate   # Linux/Mac
 pip install -r requirements.txt
 ```
 
-### 4. Créer un fichier `.env`
-Dans la racine du projet, ajoute un fichier `.env` :
-
+### 4. Configurer les variables d’environnement
+Créer un fichier `.env` à la racine :
 ```
 OPENWEATHER_API_KEY=ta_cle_api_openweather
 ```
@@ -58,12 +75,17 @@ OPENWEATHER_API_KEY=ta_cle_api_openweather
 ---
 
 ## ▶️ Lancer l’API
+
+### Avec Uvicorn (local)
 ```bash
 uvicorn app.main:app --reload
 ```
+👉 API disponible sur : [http://127.0.0.1:8000](http://127.0.0.1:8000)
 
-Par défaut, l’API tourne sur :  
-👉 [http://127.0.0.1:8000](http://127.0.0.1:8000)
+### Avec Docker
+```bash
+docker-compose up --build
+```
 
 ---
 
@@ -71,26 +93,22 @@ Par défaut, l’API tourne sur :
 
 ### 1. Créer un Pokémon
 ```bash
-curl -X POST "http://127.0.0.1:8000/pokemon" \
-     -H "Content-Type: application/json" \
-     -d '{"name":"Charmander","type_primary":"fire","type_secondary":"flying"}'
+curl -X POST "http://127.0.0.1:8000/pokemon"      -H "Content-Type: application/json"      -d '{"name":"Charmander","type_primary":"fire","type_secondary":"flying"}'
 ```
 
-### 2. Vérifier sa faiblesse météo (ex: Londres 🌧️)
+### 2. Vérifier la faiblesse météo (ex: Londres 🌧️)
 ```bash
 curl "http://127.0.0.1:8000/pokemon/1?city=London"
 ```
 
-### 3. Liste des Pokémon
+### 3. Lister les Pokémon
 ```bash
 curl "http://127.0.0.1:8000/pokemon"
 ```
 
-### 4. Mise à jour partielle (PATCH)
+### 4. Mise à jour (PATCH)
 ```bash
-curl -X PATCH "http://127.0.0.1:8000/pokemon/1" \
-     -H "Content-Type: application/json" \
-     -d '{"type_secondary":"dragon"}'
+curl -X PATCH "http://127.0.0.1:8000/pokemon/1"      -H "Content-Type: application/json"      -d '{"type_secondary":"dragon"}'
 ```
 
 ### 5. Suppression
@@ -100,7 +118,7 @@ curl -X DELETE "http://127.0.0.1:8000/pokemon/1"
 
 ---
 
-## ✅ Exemple de résultat
+## ✅ Exemple de réponse JSON
 ```json
 {
   "id": 1,
@@ -120,8 +138,9 @@ curl -X DELETE "http://127.0.0.1:8000/pokemon/1"
 - [Pydantic](https://docs.pydantic.dev/)
 - [Redis](https://redis.io/)
 - [OpenWeather API](https://openweathermap.org/api)
+- [Docker](https://www.docker.com/)
 
 ---
 
 ## 👩‍💻 Auteur
-Projet développé par **Katia** dans le cadre du cours *M2 Dev Web*.  
+Projet développé par **Katia** dans le cadre du Master *M2 Développement & Data *.
