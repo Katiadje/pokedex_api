@@ -7,6 +7,12 @@ class PokemonCreate(BaseModel):
     type_primary: str = Field(..., examples=["fire"])
     type_secondary: Optional[str] = Field(None, examples=["flying"])
 
+class PokemonUpdate(BaseModel):
+    """Schéma pour PATCH - tous les champs sont optionnels"""
+    name: Optional[str] = Field(None, examples=["Charizard"])
+    type_primary: Optional[str] = Field(None, examples=["fire"])
+    type_secondary: Optional[str] = Field(None, examples=["flying"])
+
 class PokemonOut(BaseModel):
     id: int
     name: str

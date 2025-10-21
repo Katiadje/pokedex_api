@@ -1,10 +1,11 @@
 import uvicorn
 from fastapi import FastAPI, Depends, HTTPException, Query, Body
 from sqlalchemy.orm import Session
+from typing import Optional
 
 from .database import Base, engine, get_db
 from .models import Pokemon
-from .schemas import PokemonCreate, PokemonOut
+from .schemas import PokemonCreate, PokemonUpdate, PokemonOut
 from .deps import get_redis
 from .weather import fetch_weather, is_raining_from_payload, geocode_city
 
@@ -48,36 +49,43 @@ async def get_pokemon(
     if not p:
         raise HTTPException(status_code=404, detail="Pokemon not found")
 
-    # Ville → coordonnées
-    lat, lon = await geocode_city(city)
+    try:
+        # Ville → coordonnées
+        lat, lon = await geocode_city(city)
 
-    # Météo
-    weather = await fetch_weather(lat, lon, rds)
-    raining, summary = is_raining_from_payload(weather)
-    code = weather["weather"][0]["id"]
+        # Météo
+        weather = await fetch_weather(lat, lon, rds)
+        raining, summary = is_raining_from_payload(weather)
+        code = weather["weather"][0]["id"]
 
-    weakness = False
+        weakness = False
 
-    # 🔥 Feu → faible si pluie
-    if (p.type_primary == "fire" or p.type_secondary == "fire") and (300 <= code < 600):
-        weakness = True
+        # 🔥 Feu → faible si pluie (300-599)
+        if (p.type_primary == "fire" or p.type_secondary == "fire") and (300 <= code < 600):
+            weakness = True
 
-    # 💧 Eau → faible si neige (600–699)
-    if (p.type_primary == "water" or p.type_secondary == "water") and (600 <= code < 700):
-        weakness = True
+        # 💧 Eau → faible si neige (600-699)
+        if (p.type_primary == "water" or p.type_secondary == "water") and (600 <= code < 700):
+            weakness = True
 
-    # ⚡ Électrique → faible si orage (200–299)
-    if (p.type_primary == "electric" or p.type_secondary == "electric") and (200 <= code < 300):
-        weakness = True
+        # ⚡ Électrique → faible si orage (200-299)
+        if (p.type_primary == "electric" or p.type_secondary == "electric") and (200 <= code < 300):
+            weakness = True
 
-    return PokemonOut(
-        id=p.id,
-        name=p.name,
-        type_primary=p.type_primary,
-        type_secondary=p.type_secondary,
-        weakness_due_to_weather=weakness,
-        weather_summary=summary
-    )
+        return PokemonOut(
+            id=p.id,
+            name=p.name,
+            type_primary=p.type_primary,
+            type_secondary=p.type_secondary,
+            weakness_due_to_weather=weakness,
+            weather_summary=summary
+        )
+    except ValueError as e:
+        # Ville non trouvée
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        # Erreur API météo
+        raise HTTPException(status_code=503, detail=f"Erreur API météo: {str(e)}")
 
 # LIST
 @app.get("/pokemon", response_model=list[PokemonOut])
@@ -97,17 +105,20 @@ def list_pokemon(db: Session = Depends(get_db)):
 
 # PATCH
 @app.patch("/pokemon/{pokemon_id}", response_model=PokemonOut)
-def update_pokemon(pokemon_id: int, payload: dict = Body(...), db: Session = Depends(get_db)):
+def update_pokemon(pokemon_id: int, payload: PokemonUpdate, db: Session = Depends(get_db)):
     p = db.query(Pokemon).filter(Pokemon.id == pokemon_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="Pokemon not found")
 
-    if "name" in payload:
-        p.name = payload["name"]
-    if "type_primary" in payload:
-        p.type_primary = payload["type_primary"].lower()
-    if "type_secondary" in payload:
-        p.type_secondary = payload["type_secondary"].lower() if payload["type_secondary"] else None
+    # Utiliser model_dump pour obtenir uniquement les champs fournis
+    update_data = payload.model_dump(exclude_unset=True)
+    
+    if "name" in update_data:
+        p.name = update_data["name"]
+    if "type_primary" in update_data:
+        p.type_primary = update_data["type_primary"].lower()
+    if "type_secondary" in update_data:
+        p.type_secondary = update_data["type_secondary"].lower() if update_data["type_secondary"] else None
 
     db.commit()
     db.refresh(p)
