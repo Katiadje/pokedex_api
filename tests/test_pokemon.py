@@ -47,11 +47,18 @@ class TestPokemonWeather:
         r = client.post("/pokemon", json={"name": "Salameche", "type_primary": "fire"})
         poke_id = r.json()["id"]
 
+        # Mock geocode_city to return fake coordinates
+        async def fake_geocode(city):
+            return 48.8566, 2.3522  # Paris coordinates
+
+        # Mock fetch_weather to return rainy weather (code 500)
         async def fake_weather(lat, lon, rds):
             return {"weather": [{"id": 500, "description": "pluie légère"}]}
 
-        from app import weather as weather_mod
-        monkeypatch.setattr(weather_mod, "fetch_weather", fake_weather)
+        # Patch in the main module where the functions are imported and used
+        from app import main
+        monkeypatch.setattr(main, "geocode_city", fake_geocode)
+        monkeypatch.setattr(main, "fetch_weather", fake_weather)
 
         r = client.get(f"/pokemon/{poke_id}?city=Paris")
         data = r.json()
