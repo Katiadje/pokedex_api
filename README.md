@@ -129,6 +129,4 @@ URL : `http://prometheus:9090`
 ---
 
 ## 👩‍💻 Auteur
-Projet développé par **Katia**  
-🎓 Master 2 Développement & Data
-
+Projet développé par **Katia** dans le cadre du Master *M2 Développement & Data *
