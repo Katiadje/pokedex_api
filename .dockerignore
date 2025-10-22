@@ -1,0 +1,28 @@
+# Ignore les environnements virtuels
+.venv/
+venv/
+
+# Ignore les fichiers temporaires
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore les fichiers système
+.DS_Store
+Thumbs.db
+
+# Ignore les fichiers Git
+.git
+.gitignore
+
+# Ignore les dossiers de dépendances locales ou caches
+__pycache__/
+.cache/
+pytest_cache/
+.mypy_cache/
+
+# Ignore les fichiers de dev ou IDE
+.vscode/
+.idea/
+.env

@@ -2,6 +2,7 @@ import uvicorn
 from fastapi import FastAPI, Depends, HTTPException, Query, Body
 from sqlalchemy.orm import Session
 from typing import Optional
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from .database import Base, engine, get_db
 from .models import Pokemon
@@ -9,12 +10,23 @@ from .schemas import PokemonCreate, PokemonUpdate, PokemonOut
 from .deps import get_redis
 from .weather import fetch_weather, is_raining_from_payload, geocode_city
 
-# Création des tables
+
+# --- INITIALISATION ---
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Pokedex + Weather", version="1.0.0")
 
-# CREATE
+# Ajoute les métriques Prometheus (/metrics)
+Instrumentator().instrument(app).expose(app, include_in_schema=False, should_gzip=True)
+
+
+# --- HEALTHCHECK ---
+@app.get("/healthz", include_in_schema=False)
+def healthz():
+    return {"status": "ok"}
+
+
+# --- CREATE ---
 @app.post("/pokemon", response_model=PokemonOut, status_code=201)
 def create_pokemon(payload: PokemonCreate, db: Session = Depends(get_db)):
     exists = db.query(Pokemon).filter(Pokemon.name == payload.name).first()
@@ -37,13 +49,14 @@ def create_pokemon(payload: PokemonCreate, db: Session = Depends(get_db)):
         weather_summary=None
     )
 
-# READ + météo/faiblesse
+
+# --- READ + météo/faiblesse ---
 @app.get("/pokemon/{pokemon_id}", response_model=PokemonOut)
 async def get_pokemon(
     pokemon_id: int,
     city: str = Query(..., description="Nom de la ville"),
     db: Session = Depends(get_db),
-    rds = Depends(get_redis),
+    rds=Depends(get_redis),
 ):
     p = db.query(Pokemon).filter(Pokemon.id == pokemon_id).first()
     if not p:
@@ -60,15 +73,15 @@ async def get_pokemon(
 
         weakness = False
 
-        # 🔥 Feu → faible si pluie (300-599)
+        # 🔥 Feu → faible si pluie (300–599)
         if (p.type_primary == "fire" or p.type_secondary == "fire") and (300 <= code < 600):
             weakness = True
 
-        # 💧 Eau → faible si neige (600-699)
+        # 💧 Eau → faible si neige (600–699)
         if (p.type_primary == "water" or p.type_secondary == "water") and (600 <= code < 700):
             weakness = True
 
-        # ⚡ Électrique → faible si orage (200-299)
+        # ⚡ Électrique → faible si orage (200–299)
         if (p.type_primary == "electric" or p.type_secondary == "electric") and (200 <= code < 300):
             weakness = True
 
@@ -80,14 +93,14 @@ async def get_pokemon(
             weakness_due_to_weather=weakness,
             weather_summary=summary
         )
+
     except ValueError as e:
-        # Ville non trouvée
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        # Erreur API météo
         raise HTTPException(status_code=503, detail=f"Erreur API météo: {str(e)}")
 
-# LIST
+
+# --- LIST ---
 @app.get("/pokemon", response_model=list[PokemonOut])
 def list_pokemon(db: Session = Depends(get_db)):
     rows = db.query(Pokemon).all()
@@ -103,16 +116,16 @@ def list_pokemon(db: Session = Depends(get_db)):
         for r in rows
     ]
 
-# PATCH
+
+# --- PATCH ---
 @app.patch("/pokemon/{pokemon_id}", response_model=PokemonOut)
 def update_pokemon(pokemon_id: int, payload: PokemonUpdate, db: Session = Depends(get_db)):
     p = db.query(Pokemon).filter(Pokemon.id == pokemon_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="Pokemon not found")
 
-    # Utiliser model_dump pour obtenir uniquement les champs fournis
     update_data = payload.model_dump(exclude_unset=True)
-    
+
     if "name" in update_data:
         p.name = update_data["name"]
     if "type_primary" in update_data:
@@ -131,7 +144,8 @@ def update_pokemon(pokemon_id: int, payload: PokemonUpdate, db: Session = Depend
         weather_summary=None
     )
 
-# DELETE
+
+# --- DELETE ---
 @app.delete("/pokemon/{pokemon_id}", status_code=204)
 def delete_pokemon(pokemon_id: int, db: Session = Depends(get_db)):
     p = db.query(Pokemon).filter(Pokemon.id == pokemon_id).first()
@@ -141,5 +155,7 @@ def delete_pokemon(pokemon_id: int, db: Session = Depends(get_db)):
     db.commit()
     return None
 
+
+# --- LAUNCH ---
 if __name__ == "__main__":
-    uvicorn.run("app.main:app", reload=True)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
